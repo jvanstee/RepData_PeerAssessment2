@@ -1,0 +1,163 @@
+---
+title: "Reproducible Research Project2"
+author: "JP Van Steerteghem"
+date: "9/7/2017"
+output: 
+  html_document: 
+    keep_md: yes
+---
+##The impact of severe weather events in the United States from 1950 to 2011
+
+###SYNOPIS
+In this study we investigate the impact of severe weather events in the United States using the [U.S. National Oceanic and Atmospheric Administration's (NOAA) storm database][1].   The objective of this study was to answer the following questions:
+
+- which types of events have been most harmful with respect to population health?
+- which types of events have had the greatest economic impact?
+
+
+[1]:https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2/ "U.S. National Oceanic and Atmospheric Administration's (NOAA) storm database"
+
+### LOADING AND PROCESSING THE DATA
+
+The following R-packages were used in this study.
+```{r}
+setwd("/Users/jvanstee/datasciencecoursera/RepData_PeerAssessment2")
+library(dplyr)
+library(ggplot2)
+library(gridExtra)
+```
+
+The data was downloaded from the course website and then decompressed.  
+```{r, cache=TRUE}
+
+  if(!file.exists("./Data")){dir.create("./Data")}
+  fileUrl <- "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2"
+  download.file(fileUrl,destfile="./Data/StormData.csv.bz2")
+  stormdata <- read.csv(bzfile("./Data/StormData.csv.bz2"))
+
+#verify
+str(stormdata)
+```
+
+### WHAT WEATHER EVENTS HAVE BEEN MOST HARMFUL TO THE UNITED STATES POPULATION?
+
+```{r}
+#we subset the dataset to only contain variables significant for this analysis.
+#EVTYPE = event type
+#FATALITIES = fatalities
+#INJURIES = injuries
+#PROPDMG = property damage
+#PROPDMGEXP = exponent value for property damage
+#CROPDMG = crop damage
+#CROPDMGEXP = exponent value for crop damage
+
+stormdataPA2 <- select(stormdata, EVTYPE, FATALITIES, INJURIES, PROPDMG, PROPDMGEXP,CROPDMG, CROPDMGEXP)
+
+#determine the top10 weather events causing fatalities
+casualty_ordered_fatal <-stormdataPA2 %>% group_by(EVTYPE) %>%summarise(FATALITIES = sum(FATALITIES)) %>% arrange(desc(FATALITIES)) 
+fatal_top10 <- casualty_ordered_fatal[1:10, ]
+
+#determine the top10 weather events causing injuries
+casualty_ordered_injury <-stormdataPA2 %>% group_by(EVTYPE) %>%summarise(INJURIES = sum(INJURIES)) %>% arrange(desc(INJURIES))
+injury_top10 <- casualty_ordered_injury[1:10, ]
+
+#determine top10 weather events causing casualties
+casualty_total = aggregate(FATALITIES + INJURIES ~ EVTYPE, stormdataPA2, sum)
+names(casualty_total) = c("EVTYPE","Totalcasualties")
+casualty_ordered_total = arrange(casualty_total,desc(Totalcasualties))
+casualties_top10 <- casualty_ordered_total[1:10, ]
+
+fatal_top10
+injury_top10
+casualties_top10
+
+#convert EVTYPE to factor to allow proper graphing
+casualties_top10$EVTYPE <- as.character(casualties_top10$EVTYPE)
+casualties_top10$EVTYPE <- factor(casualties_top10$EVTYPE, levels  =unique(casualties_top10$EVTYPE))
+
+
+ggplot(casualties_top10, aes(EVTYPE, Totalcasualties))+geom_histogram(stat = "identity")+theme(axis.text.x = element_text(angle = 45,hjust = 1))+ xlab("Severe Weather Type") + 
+  ggtitle("Total Casualties by Severe Weather Events in the U.S. from 1950 - 2011")
+```
+
+### WHAT WEATHER EVENTS HAVE CAUSED THE GREATES ECONOMIC DAMAGE TO THE UNITED STATES?
+
+```{r}
+## Convert the property damage and crop damage data into comparable numerical forms. 
+# PROPDMGEXP and CROPDMGEXP columns record contain a multiplier for each observation where we have Hundred (H), Thousand (K), Million (M) and Billion (B).
+
+unique(stormdataPA2$PROPDMGEXP)
+
+stormdataPA2$PROPEXP[stormdataPA2$PROPDMGEXP == "+"] <- 0
+stormdataPA2$PROPEXP[stormdataPA2$PROPDMGEXP == "-"] <- 0
+stormdataPA2$PROPEXP[stormdataPA2$PROPDMGEXP == "?"] <- 0
+
+# Assigning values for the property exponent data 
+stormdataPA2$PROPEXP[stormdataPA2$PROPDMGEXP == "K"] <- 1000
+stormdataPA2$PROPEXP[stormdataPA2$PROPDMGEXP == "M"] <- 1e+06
+stormdataPA2$PROPEXP[stormdataPA2$PROPDMGEXP == ""] <- 1
+stormdataPA2$PROPEXP[stormdataPA2$PROPDMGEXP == "B"] <- 1e+09
+stormdataPA2$PROPEXP[stormdataPA2$PROPDMGEXP == "m"] <- 1e+06
+stormdataPA2$PROPEXP[stormdataPA2$PROPDMGEXP == "0"] <- 1
+stormdataPA2$PROPEXP[stormdataPA2$PROPDMGEXP == "5"] <- 1e+05
+stormdataPA2$PROPEXP[stormdataPA2$PROPDMGEXP == "6"] <- 1e+06
+stormdataPA2$PROPEXP[stormdataPA2$PROPDMGEXP == "4"] <- 10000
+stormdataPA2$PROPEXP[stormdataPA2$PROPDMGEXP == "2"] <- 100
+stormdataPA2$PROPEXP[stormdataPA2$PROPDMGEXP == "3"] <- 1000
+stormdataPA2$PROPEXP[stormdataPA2$PROPDMGEXP == "h"] <- 100
+stormdataPA2$PROPEXP[stormdataPA2$PROPDMGEXP == "7"] <- 1e+07
+stormdataPA2$PROPEXP[stormdataPA2$PROPDMGEXP == "H"] <- 100
+stormdataPA2$PROPEXP[stormdataPA2$PROPDMGEXP == "1"] <- 10
+stormdataPA2$PROPEXP[stormdataPA2$PROPDMGEXP == "8"] <- 1e+08
+
+# Calculating the property damage value
+stormdataPA2$PROPDMGVAL <- stormdataPA2$PROPDMG * stormdataPA2$PROPEXP
+
+unique(stormdataPA2$CROPDMGEXP)
+
+# Assigning '0' to invalid exponent data
+stormdataPA2$CROPEXP[stormdataPA2$CROPDMGEXP == "?"] <- 0
+
+# Assigning values for the crop exponent data 
+stormdataPA2$CROPEXP[stormdataPA2$CROPDMGEXP == "M"] <- 1e+06
+stormdataPA2$CROPEXP[stormdataPA2$CROPDMGEXP == "K"] <- 1000
+stormdataPA2$CROPEXP[stormdataPA2$CROPDMGEXP == "m"] <- 1e+06
+stormdataPA2$CROPEXP[stormdataPA2$CROPDMGEXP == "B"] <- 1e+09
+stormdataPA2$CROPEXP[stormdataPA2$CROPDMGEXP == "0"] <- 1
+stormdataPA2$CROPEXP[stormdataPA2$CROPDMGEXP == "k"] <- 1000
+stormdataPA2$CROPEXP[stormdataPA2$CROPDMGEXP == "2"] <- 100
+stormdataPA2$CROPEXP[stormdataPA2$CROPDMGEXP == ""] <- 1
+
+#calculating value for crop damage
+stormdataPA2$CROPDMGVAL <- stormdataPA2$CROPDMG * stormdataPA2$CROPEXP
+
+##determine the top10 weather events causing property damage
+propdmg_impact <-stormdataPA2 %>% group_by(EVTYPE) %>%summarise(PROPDMGVAL = sum(PROPDMGVAL)) %>% arrange(desc(PROPDMGVAL)) 
+propdmg_impact_top10 <- propdmg_impact[1:10, ]
+
+###determine the top10 weather events causing crop damage
+cropdmg_impact <-stormdataPA2 %>% group_by(EVTYPE) %>%summarise(CROPDMGVAL = sum(CROPDMGVAL)) %>% arrange(desc(CROPDMGVAL)) 
+cropdmg_impact_top10 <- cropdmg_impact[1:10, ]
+
+propdmg_impact_top10
+cropdmg_impact_top10
+
+#convert EVTYPE to factor to allow proper graphing
+propdmg_impact_top10$EVTYPE <- as.character(propdmg_impact_top10$EVTYPE)
+propdmg_impact_top10$EVTYPE <- factor(propdmg_impact_top10$EVTYPE, levels = unique(propdmg_impact_top10$EVTYPE))
+
+cropdmg_impact_top10$EVTYPE <- as.character(cropdmg_impact_top10$EVTYPE)
+cropdmg_impact_top10$EVTYPE <- factor(cropdmg_impact_top10$EVTYPE, levels  =unique(cropdmg_impact_top10$EVTYPE))
+
+#plotting graph showing the economic impact of severe weather events
+propdmg_impact_top10_plot <- ggplot(propdmg_impact_top10, aes(EVTYPE, PROPDMGVAL/(10^9)))+geom_histogram(stat = "identity")+theme(axis.text.x = element_text(angle = 45,hjust = 1))+ xlab("Severe Weather Type") +ylab("Economic Impact in $B") + 
+  ggtitle("Economic impact of property damage caused by Severe Weather\n Events in the U.S.\n from 1950 - 2011")
+cropdmg_impact_top10_plot <- ggplot(cropdmg_impact_top10, aes(EVTYPE, CROPDMGVAL/(10^9)))+geom_histogram(stat = "identity")+theme(axis.text.x = element_text(angle = 45,hjust = 1))+ xlab("Severe Weather Type") + ylab("Economic Impact in $B") + 
+  ggtitle("Economic impact of crop damage caused by Severe Weather\n Events in the U.S.\n from 1950 - 2011")
+grid.arrange(propdmg_impact_top10_plot, cropdmg_impact_top10_plot, ncol = 2, right = 4, left = 4)
+```
+
+###RESULTS
+This study reveals that tornadoes have had the most harmful impact on US population health.  Over the measurement period tornadoes caused 5,633 fatalities and 91,346 injuries.
+
+The study also reveals that the significant impact of severe weather events on the US economy.  The majority of the economic impact was due to property damage.  Floods caused almost $145B in property damage, while hurricanes caused $69B and tornadoes caused $57B in property damage.  While the economic impact of crop damage was less severe, drought still caused the most damage at $14B.
